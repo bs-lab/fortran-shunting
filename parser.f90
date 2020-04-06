@@ -6,7 +6,7 @@ INTEGER, PARAMETER :: mql=5000, mnt=5000
 
 TYPE TokenType
   CHARACTER(LEN=32) :: string   ! e.g. '12.345' or 'var_name'
-  CHARACTER(LEN=11) :: ttype    ! 'number', 'variable', 'left_paren', 'right_paren', 'operator', 'null'
+  CHARACTER(LEN=11) :: ttype    ! 'number', 'variable', 'left_paren', 'right_paren', 'operator'
 END TYPE TokenType
 
 CONTAINS
@@ -124,7 +124,7 @@ CONTAINS
   INTENT(IN) :: card, curr_loc
 
   IF (curr_loc == LEN_TRIM(card)) THEN
-    next_char = CHAR(0)  ! null
+    next_char = CHAR(0)  ! null character
   ELSE
     next_char = card(curr_loc+1:curr_loc+1)
   END IF
@@ -139,7 +139,7 @@ CONTAINS
   CHARACTER(LEN=mlc) :: card 
   CHARACTER(LEN=1) :: curr_char, next_char
   LOGICAL :: exit_flag
-  INTEGER :: vc, c, t, num_tokens, loc, icurr
+  INTEGER :: i, vc, c, t, num_tokens, loc, icurr
   INTENT(IN) :: card
   INTENT(OUT) :: tokens, num_tokens
 
@@ -230,24 +230,56 @@ CONTAINS
 
   ! clean up any instances where a plus or minus sign that should be associated with a value
   !   was instead treated as a separate token
-  DO t = 1, num_tokens - 2
-    IF (tokens(t)%ttype == "operator" .AND. &
-        tokens(t+1)%ttype == "operator" .AND. &
-        tokens(t+2)%ttype == "number") THEN
+  !DO t = 1, num_tokens - 2
+  t = 0
+  DO
+    t = t + 1
+    IF (t > (num_tokens - 2)) EXIT
+
+    IF (tokens(t)%ttype == "operator" .AND. tokens(t+1)%ttype == "operator" .AND. &
+        (tokens(t+2)%ttype == "number" .OR. tokens(t+2)%ttype == "variable")) THEN
+
       IF (tokens(t+1)%string == "-") THEN
-        ! change "* - 31" to "* -31"
-        tokens(t+1)%ttype = "null"
-        tokens(t+1)%string = ""
-        tokens(t+2)%string = "-" // TRIM(tokens(t+2)%string)
+        IF (tokens(t+2)%ttype == "number") THEN
+          ! change "... * - 31" to "... * -31"
+          tokens(t+1)%string = "-" // TRIM(tokens(t+2)%string)
+          tokens(t+1)%ttype = tokens(t+2)%ttype
+           
+          DO i = t+2, num_tokens-1
+            tokens(i) = tokens(i+1)
+          END DO
+          num_tokens = num_tokens - 1
+
+        ELSE
+          ! change "... * - AAA" to "... * (-1 * AAA)"
+          DO i = num_tokens, t+3, -1
+            tokens(i+3) = tokens(i)
+          END DO
+          tokens(t+5)%ttype = "right_paren"
+          tokens(t+5)%string = ")"
+          tokens(t+4) = tokens(t+2)
+          tokens(t+3)%ttype = "operator"
+          tokens(t+3)%string = "*"
+          tokens(t+2)%ttype = "number"
+          tokens(t+2)%string = "-1"
+          tokens(t+1)%ttype = "left_paren"
+          tokens(t+1)%string = "("
+          num_tokens = num_tokens + 3
+        END IF
+
       ELSEIF (tokens(t+1)%string == "+") THEN
         ! change "* + 31" to "* 31"
-        tokens(t+1)%ttype = "null"
-        tokens(t+1)%string = ""
+        DO i = t+1, num_tokens-1
+          tokens(i) = tokens(i+1)
+        END DO
+        num_tokens = num_tokens - 1
+
       ELSE
         WRITE(0,*)"ERROR in pattern: " // TRIM(tokens(t)%string)   // " " // &
                                           TRIM(tokens(t+1)%string) // " " // & 
                                           TRIM(tokens(t+2)%string)
         STOP
+
       END IF
     END IF
   END DO
@@ -273,8 +305,6 @@ CONTAINS
   ! using Shunting-yard algorithm to convert list of tokens into Reverse Polish notation (RPN)
 
   DO t = 1, num_tokens
-    IF (tokens(t)%ttype == "null")  CYCLE
-
     IF (tokens(t)%ttype == "operator") THEN
       priority = GET_PRIORITY(tokens(t)%string)
     END IF
