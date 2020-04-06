@@ -1,7 +1,7 @@
 MODULE PARSER_MOD
-INTEGER, PARAMETER :: num_opers=4, mlc=128
-CHARACTER(LEN=1), DIMENSION(num_opers), PARAMETER :: operators = ['/',  '*',  '-', '+']
-INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [2, 2, 1, 1]
+INTEGER, PARAMETER :: num_opers=5, mlc=128
+CHARACTER(LEN=1), DIMENSION(num_opers), PARAMETER :: operators = ['^', '/',  '*',  '-', '+']
+INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [3, 2, 2, 1, 1]
 INTEGER, PARAMETER :: mql=5000, mnt=5000
 
 TYPE TokenType
@@ -82,7 +82,7 @@ CONTAINS
   ! ------------------------------------------------------------------------------------------------
   PURE LOGICAL FUNCTION IsNumeric(my_char) 
   CHARACTER(LEN=1), INTENT(IN) :: my_char
-    IF (ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57) THEN
+    IF (ICHAR(my_char) == 46 .OR. (ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57)) THEN
       IsNumeric = .TRUE.
     ELSE
       IsNumeric = .FALSE.
@@ -104,7 +104,8 @@ CONTAINS
   ! ------------------------------------------------------------------------------------------------
   PURE LOGICAL FUNCTION IsAlphaNumeric(my_char)
   CHARACTER(LEN=1), INTENT(IN) :: my_char
-    IF ((ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57) .OR. &    ! 0 through 9
+    IF (ICHAR(my_char) == 46 .OR. &                                 ! decimal point
+        (ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57) .OR. &    ! 0 through 9
         (ICHAR(my_char) >= 65 .AND. ICHAR(my_char) <= 90) .OR. &    ! A through Z
         (ICHAR(my_char) >= 97 .AND. ICHAR(my_char) <= 122)) THEN    ! a through z
       IsAlphaNumeric = .TRUE.
@@ -342,6 +343,17 @@ INTEGER :: num_tokens, size_queue
   ! --------------------------------
   card(:) = " "
   card = " ((C1*BB))+ A1 "
+
+  CALL TOKENIZER(card, tokens, num_tokens)
+  CALL PARSER(tokens, num_tokens, queue, size_queue)
+
+  WRITE(6,'(/A)')"card: " // TRIM(card)
+  CALL PRINT_TOKENS(6, tokens, num_tokens)
+  CALL PRINT_STACK(6, queue, size_queue)
+
+  ! --------------------------------
+  card(:) = " "
+  card = " ((C1*BB^2)^3.3)+ A1 "
 
   CALL TOKENIZER(card, tokens, num_tokens)
   CALL PARSER(tokens, num_tokens, queue, size_queue)
