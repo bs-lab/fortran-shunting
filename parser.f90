@@ -317,64 +317,27 @@ END MODULE PARSER_MOD
 PROGRAM MAIN
 use parser_mod
 IMPLICIT NONE
+INTEGER, PARAMETER :: inn=101
 CHARACTER(LEN=mlc) :: card
 CHARACTER(LEN=512), DIMENSION(mnt) :: queue
+CHARACTER(LEN=256) :: eqns_file
 TYPE(TokenType), DIMENSION(mnt) :: tokens
-INTEGER :: num_tokens, size_queue
+INTEGER :: num_tokens, size_queue, ios
 
-  ! --------------------------------
-  card(:) = " "
-  card = " 51*(41+31) "
+  CALL GETARG(1, eqns_file)
+  OPEN(UNIT=inn, FILE=eqns_file, ACTION='read', STATUS='old')
 
-  CALL TOKENIZER(card, tokens, num_tokens)
-  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
+  DO
+    READ(inn, '(A)', iostat=ios) card
+    IF (ios < 0) EXIT
+    CALL TOKENIZER(card, tokens, num_tokens)
+    CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
 
-  WRITE(6,'(/A)')"card: " // TRIM(card)
-  CALL PRINT_TOKENS(6, tokens, num_tokens)
-  CALL PRINT_STACK(6, queue, size_queue)
+    WRITE(6,'(/A)')"card: " // TRIM(card)
+    CALL PRINT_TOKENS(6, tokens, num_tokens)
+    CALL PRINT_STACK(6, queue, size_queue)
+  END DO
 
-  ! --------------------------------
-  card(:) = " "
-  card = " 51*41+ 31"
-
-  CALL TOKENIZER(card, tokens, num_tokens)
-  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
-
-  WRITE(6,'(/A)')"card: " // TRIM(card)
-  CALL PRINT_TOKENS(6, tokens, num_tokens)
-  CALL PRINT_STACK(6, queue, size_queue)
-
-  ! --------------------------------
-  card(:) = " "
-  card = " ((C1*BB))+ A1 "
-
-  CALL TOKENIZER(card, tokens, num_tokens)
-  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
-
-  WRITE(6,'(/A)')"card: " // TRIM(card)
-  CALL PRINT_TOKENS(6, tokens, num_tokens)
-  CALL PRINT_STACK(6, queue, size_queue)
-
-  ! --------------------------------
-  card(:) = " "
-  card = " ((C1*BB^2)^3.3)+ A1 "
-
-  CALL TOKENIZER(card, tokens, num_tokens)
-  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
-
-  WRITE(6,'(/A)')"card: " // TRIM(card)
-  CALL PRINT_TOKENS(6, tokens, num_tokens)
-  CALL PRINT_STACK(6, queue, size_queue)
-
-  ! --------------------------------
-  card(:) = " "
-  card = " ((C1*BB**2)**3.3)+ A1 "
-
-  CALL TOKENIZER(card, tokens, num_tokens)
-  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
-
-  WRITE(6,'(/A)')"card: " // TRIM(card)
-  CALL PRINT_TOKENS(6, tokens, num_tokens)
-  CALL PRINT_STACK(6, queue, size_queue)
+  CLOSE(inn)
 
 END PROGRAM MAIN

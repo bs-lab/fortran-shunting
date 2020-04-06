@@ -1,0 +1,20 @@
+
+card:  51*(41+31)
+tokens: 51 * ( 41 + 31 )
+rpn stack: 51 41 31 + *
+
+card:  51*41+ 31
+tokens: 51 * 41 + 31
+rpn stack: 51 41 * 31 +
+
+card:  ((C1*BB))+ A1
+tokens: ( ( C1 * BB ) ) + A1
+rpn stack: C1 BB * A1 +
+
+card:  ((C1*BB^2)^3.3)+ A1
+tokens: ( ( C1 * BB ^ 2 ) ^ 3.3 ) + A1
+rpn stack: C1 BB 2 ^ * 3.3 ^ A1 +
+
+card:  ((C1*BB**2)**3.3)+ A1
+tokens: ( ( C1 * BB ** 2 ) ** 3.3 ) + A1
+rpn stack: C1 BB 2 ** * 3.3 ** A1 +
