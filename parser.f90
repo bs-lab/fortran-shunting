@@ -6,7 +6,7 @@ INTEGER, PARAMETER :: mql=5000, mnt=5000
 
 TYPE TokenType
   CHARACTER(LEN=32) :: string   ! e.g. '12.345' or 'var_name'
-  CHARACTER(LEN=10) :: ttype    ! 'number', 'leftparen', 'rightparen', 'operator'
+  CHARACTER(LEN=11) :: ttype    ! 'number', 'left_paren', 'right_paren', 'operator'
 END TYPE TokenType
 
 CONTAINS
@@ -15,12 +15,12 @@ CONTAINS
   SUBROUTINE PRINT_TOKENS(OUNIT, tokens, num_tokens)
   IMPLICIT NONE
   INTEGER :: i, OUNIT, num_tokens
-  CHARACTER(LEN=512), DIMENSION(num_tokens) :: tokens
+  TYPE(TokenType), DIMENSION(num_tokens) :: tokens
   INTENT(IN) :: OUNIT, tokens, num_tokens
 
   WRITE(OUNIT, '(A)', ADVANCE='no') "tokens:"
   DO i = 1, num_tokens
-    WRITE(OUNIT, '(A)', ADVANCE='no') " " // TRIM(tokens(i))
+    WRITE(OUNIT, '(A)', ADVANCE='no') " " // TRIM(tokens(i)%string)
   END DO
   WRITE(OUNIT, '(A)')
 
@@ -134,11 +134,11 @@ CONTAINS
   ! ------------------------------------------------------------------------------------------------
   SUBROUTINE TOKENIZER(card, tokens, num_tokens)
   IMPLICIT NONE
-  CHARACTER(LEN=512), DIMENSION(mnt) :: tokens
+  TYPE(TokenType), DIMENSION(mnt) :: tokens
   CHARACTER(LEN=mlc) :: card 
   CHARACTER(LEN=1) :: curr_char, next_char
   LOGICAL :: exit_flag, loop_flag
-  INTEGER :: vc, c, num_tokens, loc, icurr
+  INTEGER :: vc, c, t, num_tokens, loc, icurr
   INTENT(IN) :: card
   INTENT(OUT) :: tokens, num_tokens
 
@@ -157,9 +157,17 @@ CONTAINS
     IF (curr_char == " ")  CYCLE
     !write(0,*)"current:", curr_char
 
-    IF (curr_char == ")" .OR. curr_char == "(") THEN
+    IF (curr_char == "(") THEN
       num_tokens = num_tokens + 1
-      tokens(num_tokens) = curr_char
+      tokens(num_tokens)%string = curr_char
+      tokens(num_tokens)%ttype = 'left_paren'
+      CYCLE
+    END IF
+    
+    IF (curr_char == ")") THEN
+      num_tokens = num_tokens + 1
+      tokens(num_tokens)%string = curr_char
+      tokens(num_tokens)%ttype = 'right_paren'
       CYCLE
     END IF
     
@@ -167,7 +175,8 @@ CONTAINS
     loc = GET_OPER_INDEX(curr_char)
     IF (loc > 0) THEN
       num_tokens = num_tokens + 1
-      tokens(num_tokens) = curr_char
+      tokens(num_tokens)%string = curr_char
+      tokens(num_tokens)%ttype = 'operator'
       loop_flag = .TRUE.
       CYCLE
     END IF
@@ -176,8 +185,13 @@ CONTAINS
     IF (IsAlphaNumeric(curr_char)) THEN
       num_tokens = num_tokens + 1
       vc = 1
-      tokens(num_tokens)(:) = ""
-      tokens(num_tokens)(vc:vc) = curr_char
+      IF (IsNumeric(curr_char)) THEN
+        tokens(num_tokens)%ttype = 'number'
+      ELSE
+        tokens(num_tokens)%ttype = 'variable'
+      END IF
+      tokens(num_tokens)%string(:) = ""
+      tokens(num_tokens)%string(vc:vc) = curr_char
 
       ! read until next non-alphanumeric value
       DO
@@ -187,14 +201,24 @@ CONTAINS
         IF (IsAlphaNumeric(next_char)) THEN
           vc = vc + 1
           c = c + 1
-          tokens(num_tokens)(vc:vc) = next_char
+          tokens(num_tokens)%string(vc:vc) = next_char
         ELSE
           ! found end of number or variable name
           EXIT
         END IF
       END DO
     END IF
+  END DO
 
+  DO t = 1, num_tokens
+    IF (tokens(t)%ttype /= "number" .AND. &
+        tokens(t)%ttype /= "variable" .AND. &
+        tokens(t)%ttype /= "left_paren" .AND. &
+        tokens(t)%ttype /= "right_paren" .AND. &
+        tokens(t)%ttype /= "operator") THEN
+      WRITE(0,*)"unknown token type for " // tokens(t)%string
+      STOP
+    END IF
   END DO
 
   ! clean up any instances where a plus or minus sign that should be associated with a value
@@ -210,11 +234,10 @@ CONTAINS
   SUBROUTINE PARSER(tokens, num_tokens, output_queue, out_head)
   IMPLICIT NONE
   INTEGER :: num_tokens
-  CHARACTER(LEN=512), DIMENSION(num_tokens) :: tokens
+  TYPE(TokenType), DIMENSION(num_tokens) :: tokens
   CHARACTER(LEN=512), DIMENSION(mql) :: output_queue
   CHARACTER(LEN=512), DIMENSION(mql) :: oper_stack
-  LOGICAL :: IsNumeric, IsLeftParen, IsRightParen, IsOperator
-  INTEGER :: i, t, priority, top_priority
+  INTEGER :: t, priority, top_priority
   INTEGER  :: out_head, oper_head
   INTENT(IN) :: tokens, num_tokens
   INTENT(OUT) :: output_queue, out_head
@@ -223,42 +246,16 @@ CONTAINS
   oper_head = 0
 
   DO t = 1, num_tokens
-    !write(0,*)t,"token:", trim(tokens(t))
-    IsNumeric = .FALSE.
-    IsLeftParen = .FALSE.
-    IsRightParen = .FALSE.
-    IsOperator = .FALSE.
-
-    IF (ICHAR(tokens(t)(1:1)) >= 48 .AND. ICHAR(tokens(t)(1:1)) <= 57) THEN
-      IsNumeric = .TRUE.
-
-    ELSEIF(tokens(t) == "(") THEN
-      IsLeftParen = .TRUE.
-
-    ELSEIF(tokens(t) == ")") THEN
-      IsRightParen = .TRUE.
-
-    ELSE
-      DO i = 1, num_opers
-        IF (tokens(t) == operators(i)) THEN
-          IsOperator = .TRUE.
-          priority = oper_priority(i)
-          EXIT
-        END IF
-      END DO
+    IF (tokens(t)%ttype == "operator") THEN
+      priority = GET_PRIORITY(tokens(t)%string)
     END IF
 
-    IF (.NOT. IsNumeric .AND. .NOT. IsLeftParen .AND. .NOT. IsRightParen .AND. .NOT. IsOperator) THEN
-      WRITE(0,*) "Unknown token type", tokens(t)
-      STOP
-    END IF
-
-    IF (IsNumeric) THEN
+    IF (tokens(t)%ttype == "number" .OR. tokens(t)%ttype == "variable") THEN
       out_head = out_head + 1
-      output_queue(out_head) = tokens(t)
+      output_queue(out_head) = tokens(t)%string
     END IF
 
-    IF (IsOperator) THEN
+    IF (tokens(t)%ttype == "operator") THEN
       DO
         IF (oper_head == 0)  EXIT
         top_priority = GET_PRIORITY(oper_stack(oper_head))
@@ -273,15 +270,15 @@ CONTAINS
       END DO
 
       oper_head = oper_head + 1
-      oper_stack(oper_head) = tokens(t)
+      oper_stack(oper_head) = tokens(t)%string
     END IF
 
-    IF (IsLeftParen) THEN
+    IF (tokens(t)%ttype == "left_paren") THEN
       oper_head = oper_head + 1
-      oper_stack(oper_head) = tokens(t)
+      oper_stack(oper_head) = tokens(t)%string
     END IF
 
-    IF (IsRightParen) THEN
+    IF (tokens(t)%ttype == "right_paren") THEN
       IF (oper_head == 0) THEN
         WRITE(0,*)"unexpected closing parentheses"
         STOP
@@ -316,7 +313,8 @@ PROGRAM MAIN
 use parser_mod
 IMPLICIT NONE
 CHARACTER(LEN=mlc) :: card
-CHARACTER(LEN=512), DIMENSION(mnt) :: tokens, queue
+CHARACTER(LEN=512), DIMENSION(mnt) :: queue
+TYPE(TokenType), DIMENSION(mnt) :: tokens
 INTEGER :: num_tokens, size_queue
 
   ! --------------------------------
@@ -343,7 +341,7 @@ INTEGER :: num_tokens, size_queue
 
   ! --------------------------------
   card(:) = " "
-  card = " ((51*41))+ 31 "
+  card = " ((C1*BB))+ A1 "
 
   CALL TOKENIZER(card, tokens, num_tokens)
   CALL PARSER(tokens, num_tokens, queue, size_queue)
