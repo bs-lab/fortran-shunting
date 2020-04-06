@@ -1,8 +1,14 @@
 MODULE PARSER_MOD
-INTEGER, PARAMETER :: num_opers=6, mlc=128
+
+PRIVATE
+PUBLIC mss, mlc, mli, TokenType, TOKENIZER, CREATE_STACK, PRINT_TOKENS, PRINT_STACK
+
+INTEGER, PARAMETER :: mss=5000    ! max size of stack
+INTEGER, PARAMETER :: mlc=1024    ! max length of a record (equation)
+INTEGER, PARAMETER :: mli=64      ! max length of item on stack
+INTEGER, PARAMETER :: num_opers=6
 CHARACTER(LEN=2), DIMENSION(num_opers), PARAMETER :: operators = ['**', '^ ', '/ ',  '* ',  '- ', '+ ']
 INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [3, 3, 2, 2, 1, 1]
-INTEGER, PARAMETER :: mql=5000, mnt=5000
 
 TYPE TokenType
   CHARACTER(LEN=32) :: string   ! e.g. '12.345' or 'var_name'
@@ -31,7 +37,7 @@ CONTAINS
   SUBROUTINE PRINT_STACK(OUNIT, stack, stack_size)
   IMPLICIT NONE
   INTEGER :: i, OUNIT, stack_size
-  CHARACTER(LEN=512), DIMENSION(stack_size) :: stack
+  CHARACTER(LEN=mli), DIMENSION(stack_size) :: stack
   INTENT(IN) :: OUNIT, stack, stack_size
 
   WRITE(OUNIT, '(A)', ADVANCE='no') "rpn stack:"
@@ -104,10 +110,7 @@ CONTAINS
   ! ------------------------------------------------------------------------------------------------
   PURE LOGICAL FUNCTION IsAlphaNumeric(my_char)
   CHARACTER(LEN=1), INTENT(IN) :: my_char
-    IF (ICHAR(my_char) == 46 .OR. &                                 ! decimal point
-        (ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57) .OR. &    ! 0 through 9
-        (ICHAR(my_char) >= 65 .AND. ICHAR(my_char) <= 90) .OR. &    ! A through Z
-        (ICHAR(my_char) >= 97 .AND. ICHAR(my_char) <= 122)) THEN    ! a through z
+    IF (IsNumeric(my_char) .OR. IsAlphabetic(my_char)) THEN
       IsAlphaNumeric = .TRUE.
     ELSE
       IsAlphaNumeric = .FALSE.
@@ -135,11 +138,11 @@ CONTAINS
   ! ------------------------------------------------------------------------------------------------
   SUBROUTINE TOKENIZER(card, tokens, num_tokens)
   IMPLICIT NONE
-  TYPE(TokenType), DIMENSION(mnt) :: tokens
+  TYPE(TokenType), DIMENSION(mss) :: tokens
   CHARACTER(LEN=mlc) :: card 
   CHARACTER(LEN=1) :: curr_char, next_char
   LOGICAL :: exit_flag
-  INTEGER :: i, vc, c, t, num_tokens, loc, icurr
+  INTEGER :: i, vc, c, t, num_tokens, loc
   INTENT(IN) :: card
   INTENT(OUT) :: tokens, num_tokens
 
@@ -188,7 +191,6 @@ CONTAINS
       CYCLE
     END IF
 
-    icurr = ICHAR(curr_char)
     IF (IsAlphaNumeric(curr_char)) THEN
       num_tokens = num_tokens + 1
       vc = 1
@@ -228,9 +230,8 @@ CONTAINS
     END IF
   END DO
 
-  ! clean up any instances where a plus or minus sign that should be associated with a value
-  !   was instead treated as a separate token
-  !DO t = 1, num_tokens - 2
+  ! Clean up any instances where a plus or minus sign that should be associated with a value
+  !   was instead treated as a separate token.
   t = 0
   DO
     t = t + 1
@@ -292,8 +293,8 @@ CONTAINS
   IMPLICIT NONE
   INTEGER :: num_tokens
   TYPE(TokenType), DIMENSION(num_tokens) :: tokens
-  CHARACTER(LEN=512), DIMENSION(mql) :: output_queue
-  CHARACTER(LEN=512), DIMENSION(mql) :: oper_stack
+  CHARACTER(LEN=mli), DIMENSION(mss) :: output_queue
+  CHARACTER(LEN=mli), DIMENSION(mss) :: oper_stack
   INTEGER :: t, priority, top_priority
   INTEGER  :: out_head, oper_head
   INTENT(IN) :: tokens, num_tokens
@@ -303,7 +304,6 @@ CONTAINS
   oper_head = 0
 
   ! using Shunting-yard algorithm to convert list of tokens into Reverse Polish notation (RPN)
-
   DO t = 1, num_tokens
     IF (tokens(t)%ttype == "operator") THEN
       priority = GET_PRIORITY(tokens(t)%string)
@@ -353,6 +353,7 @@ CONTAINS
     END IF
   END DO
 
+  ! move operation stack onto output stack
   DO
     IF (oper_head == 0) EXIT
     out_head = out_head + 1
@@ -370,9 +371,9 @@ use parser_mod
 IMPLICIT NONE
 INTEGER, PARAMETER :: inn=101
 CHARACTER(LEN=mlc) :: card
-CHARACTER(LEN=512), DIMENSION(mnt) :: queue
+CHARACTER(LEN=mli), DIMENSION(mss) :: queue
 CHARACTER(LEN=256) :: eqns_file
-TYPE(TokenType), DIMENSION(mnt) :: tokens
+TYPE(TokenType), DIMENSION(mss) :: tokens
 INTEGER :: num_tokens, size_queue, ios
 
   CALL GETARG(1, eqns_file)
