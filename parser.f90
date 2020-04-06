@@ -6,7 +6,7 @@ INTEGER, PARAMETER :: mql=5000, mnt=5000
 
 TYPE TokenType
   CHARACTER(LEN=32) :: string   ! e.g. '12.345' or 'var_name'
-  CHARACTER(LEN=11) :: ttype    ! 'number', 'left_paren', 'right_paren', 'operator'
+  CHARACTER(LEN=11) :: ttype    ! 'number', 'variable', 'left_paren', 'right_paren', 'operator', 'null'
 END TYPE TokenType
 
 CONTAINS
@@ -230,9 +230,27 @@ CONTAINS
 
   ! clean up any instances where a plus or minus sign that should be associated with a value
   !   was instead treated as a separate token
-  !DO t = 1, num_tokens - 2
-    !IF 
-  !END DO
+  DO t = 1, num_tokens - 2
+    IF (tokens(t)%ttype == "operator" .AND. &
+        tokens(t+1)%ttype == "operator" .AND. &
+        tokens(t+2)%ttype == "number") THEN
+      IF (tokens(t+1)%string == "-") THEN
+        ! change "* - 31" to "* -31"
+        tokens(t+1)%ttype = "null"
+        tokens(t+1)%string = ""
+        tokens(t+2)%string = "-" // TRIM(tokens(t+2)%string)
+      ELSEIF (tokens(t+1)%string == "+") THEN
+        ! change "* + 31" to "* 31"
+        tokens(t+1)%ttype = "null"
+        tokens(t+1)%string = ""
+      ELSE
+        WRITE(0,*)"ERROR in pattern: " // TRIM(tokens(t)%string)   // " " // &
+                                          TRIM(tokens(t+1)%string) // " " // & 
+                                          TRIM(tokens(t+2)%string)
+        STOP
+      END IF
+    END IF
+  END DO
 
   END SUBROUTINE TOKENIZER
 
@@ -252,7 +270,11 @@ CONTAINS
   out_head = 0
   oper_head = 0
 
+  ! using Shunting-yard algorithm to convert list of tokens into Reverse Polish notation (RPN)
+
   DO t = 1, num_tokens
+    IF (tokens(t)%ttype == "null")  CYCLE
+
     IF (tokens(t)%ttype == "operator") THEN
       priority = GET_PRIORITY(tokens(t)%string)
     END IF
@@ -299,7 +321,6 @@ CONTAINS
         oper_head = oper_head - 1
       END IF
     END IF
-
   END DO
 
   DO
