@@ -1,8 +1,13 @@
 MODULE PARSER_MOD
-INTEGER, PARAMETER :: num_opers=4
+INTEGER, PARAMETER :: num_opers=4, mlc=128
 CHARACTER(LEN=1), DIMENSION(num_opers), PARAMETER :: operators = ['/',  '*',  '-', '+']
 INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [2, 2, 1, 1]
 INTEGER, PARAMETER :: mql=5000, mnt=5000
+
+TYPE TokenType
+  CHARACTER(LEN=32) :: string   ! e.g. '12.345' or 'var_name'
+  CHARACTER(LEN=10) :: ttype    ! 'number', 'leftparen', 'rightparen', 'operator'
+END TYPE TokenType
 
 CONTAINS
 
@@ -39,11 +44,11 @@ CONTAINS
 
 
   ! ------------------------------------------------------------------------------------------------
-  FUNCTION GET_PRIORITY(oper) RESULT(out)
+  FUNCTION GET_OPER_INDEX(oper) RESULT(loc)
   IMPLICIT NONE
-  INTEGER :: loc, out, i
-  INTENT(IN) :: oper
+  INTEGER :: loc, i
   CHARACTER(LEN=1) :: oper
+  INTENT(IN) :: oper
 
   loc = 0
   DO i = 1, num_opers
@@ -53,31 +58,92 @@ CONTAINS
     END IF
   END DO
 
+  END FUNCTION GET_OPER_INDEX
+
+
+  ! ------------------------------------------------------------------------------------------------
+  FUNCTION GET_PRIORITY(oper) RESULT(xout)
+  IMPLICIT NONE
+  INTEGER :: loc, xout
+  CHARACTER(LEN=1) :: oper
+  INTENT(IN) :: oper
+
+  loc = GET_OPER_INDEX(oper)
+
   IF (loc < 1) THEN
-    !WRITE(0,*) "ERROR: bad operator", oper
-    !STOP
-    out = -9999
+    xout = -9999
   ELSE
-    out = oper_priority(loc)
+    xout = oper_priority(loc)
   END IF
 
   END FUNCTION GET_PRIORITY
 
 
   ! ------------------------------------------------------------------------------------------------
+  PURE LOGICAL FUNCTION IsNumeric(my_char) 
+  CHARACTER(LEN=1), INTENT(IN) :: my_char
+    IF (ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57) THEN
+      IsNumeric = .TRUE.
+    ELSE
+      IsNumeric = .FALSE.
+    END IF
+  END FUNCTION IsNumeric
+
+  ! ------------------------------------------------------------------------------------------------
+  PURE LOGICAL FUNCTION IsAlphabetic(my_char) 
+  CHARACTER(LEN=1), INTENT(IN) :: my_char
+    IF ((ICHAR(my_char) >= 65 .AND. ICHAR(my_char) <= 90) .OR. &    ! A through Z
+        (ICHAR(my_char) >= 97 .AND. ICHAR(my_char) <= 122)) THEN    ! a through z
+      IsAlphabetic = .TRUE.
+    ELSE
+      IsAlphabetic = .FALSE.
+    END IF
+  END FUNCTION IsAlphabetic
+
+
+  ! ------------------------------------------------------------------------------------------------
+  PURE LOGICAL FUNCTION IsAlphaNumeric(my_char)
+  CHARACTER(LEN=1), INTENT(IN) :: my_char
+    IF ((ICHAR(my_char) >= 48 .AND. ICHAR(my_char) <= 57) .OR. &    ! 0 through 9
+        (ICHAR(my_char) >= 65 .AND. ICHAR(my_char) <= 90) .OR. &    ! A through Z
+        (ICHAR(my_char) >= 97 .AND. ICHAR(my_char) <= 122)) THEN    ! a through z
+      IsAlphaNumeric = .TRUE.
+    ELSE
+      IsAlphaNumeric = .FALSE.
+    END IF
+  END FUNCTION IsAlphaNumeric
+
+
+  ! ------------------------------------------------------------------------------------------------
+  FUNCTION PEEK_NEXT_CHAR(card, curr_loc) RESULT(next_char)
+  IMPLICIT NONE
+  CHARACTER(LEN=mlc) :: card
+  CHARACTER(LEN=1) :: next_char
+  INTEGER :: curr_loc
+  INTENT(IN) :: card, curr_loc
+
+  IF (curr_loc == LEN_TRIM(card)) THEN
+    next_char = CHAR(0)  ! null
+  ELSE
+    next_char = card(curr_loc+1:curr_loc+1)
+  END IF
+
+  END FUNCTION PEEK_NEXT_CHAR
+
+
+  ! ------------------------------------------------------------------------------------------------
   SUBROUTINE TOKENIZER(card, tokens, num_tokens)
   IMPLICIT NONE
   CHARACTER(LEN=512), DIMENSION(mnt) :: tokens
-  CHARACTER(LEN=128) :: card, num_value
-  CHARACTER(LEN=1) :: curr_char
-  LOGICAL :: IsNumber, exit_flag
-  INTEGER :: vc, c, i, num_tokens
+  CHARACTER(LEN=mlc) :: card 
+  CHARACTER(LEN=1) :: curr_char, next_char
+  LOGICAL :: exit_flag, loop_flag
+  INTEGER :: vc, c, num_tokens, loc, icurr
   INTENT(IN) :: card
   INTENT(OUT) :: tokens, num_tokens
 
   ! get tokens
   num_tokens = 0
-  IsNumber = .FALSE.
   exit_flag = .FALSE.
   c = 0
 
@@ -88,66 +154,54 @@ CONTAINS
     END IF
 
     curr_char = card(c:c)
-    !write(0,*)"current:", curr_char
-    DO i = 1, num_opers
-      IF (curr_char == operators(i)) THEN
-        num_tokens = num_tokens + 1
-        tokens(num_tokens) = curr_char
-        EXIT
-      END IF
-    END DO
-
     IF (curr_char == " ")  CYCLE
+    !write(0,*)"current:", curr_char
 
     IF (curr_char == ")" .OR. curr_char == "(") THEN
       num_tokens = num_tokens + 1
       tokens(num_tokens) = curr_char
       CYCLE
     END IF
+    
+    ! check if character is an operator
+    loc = GET_OPER_INDEX(curr_char)
+    IF (loc > 0) THEN
+      num_tokens = num_tokens + 1
+      tokens(num_tokens) = curr_char
+      loop_flag = .TRUE.
+      CYCLE
+    END IF
 
-    IF (ICHAR(curr_char) >= 48 .AND. ICHAR(curr_char) <= 57) THEN
-      IsNumber = .TRUE.
+    icurr = ICHAR(curr_char)
+    IF (IsAlphaNumeric(curr_char)) THEN
       num_tokens = num_tokens + 1
       vc = 1
-      num_value = ""
-      num_value(vc:vc) = curr_char
+      tokens(num_tokens)(:) = ""
+      tokens(num_tokens)(vc:vc) = curr_char
 
-      ! read until next non-number
-      DO 
-        c = c + 1
-        IF (c > LEN_TRIM(card)) THEN
-          tokens(num_tokens) = TRIM(num_value)
+      ! read until next non-alphanumeric value
+      DO
+        next_char = PEEK_NEXT_CHAR(card, c)
+        IF (ICHAR(next_char) == 0)  EXIT   ! found end-of-line
+
+        IF (IsAlphaNumeric(next_char)) THEN
+          vc = vc + 1
+          c = c + 1
+          tokens(num_tokens)(vc:vc) = next_char
+        ELSE
+          ! found end of number or variable name
           EXIT
         END IF
-
-        curr_char = card(c:c)
-        !write(0,*)"  current:", curr_char, c
-
-        IF (curr_char == " " .OR. curr_char == ")" .OR. curr_char == "(") THEN
-          c = c - 1
-          tokens(num_tokens) = TRIM(num_value)
-          EXIT
-        END IF
-
-        DO i = 1, num_opers
-          IF (curr_char == operators(i)) THEN
-            c = c - 1
-            tokens(num_tokens) = TRIM(num_value)
-            exit_flag = .TRUE.
-            EXIT
-          END IF
-        END DO
-
-        IF (exit_flag) THEN
-          exit_flag = .FALSE.
-          EXIT
-        END IF
-
-        vc = vc + 1
-        num_value(vc:vc) = curr_char
       END DO
     END IF
+
   END DO
+
+  ! clean up any instances where a plus or minus sign that should be associated with a value
+  !   was instead treated as a separate token
+  !DO t = 1, num_tokens - 2
+    !IF 
+  !END DO
 
   END SUBROUTINE TOKENIZER
 
@@ -195,7 +249,7 @@ CONTAINS
     END IF
 
     IF (.NOT. IsNumeric .AND. .NOT. IsLeftParen .AND. .NOT. IsRightParen .AND. .NOT. IsOperator) THEN
-      WRITE(0,*) "Unknown token type"
+      WRITE(0,*) "Unknown token type", tokens(t)
       STOP
     END IF
 
@@ -253,7 +307,6 @@ CONTAINS
     oper_head = oper_head - 1
   END DO
 
-
   END SUBROUTINE PARSER
 END MODULE PARSER_MOD
 
@@ -262,12 +315,12 @@ END MODULE PARSER_MOD
 PROGRAM MAIN
 use parser_mod
 IMPLICIT NONE
-CHARACTER(LEN=128) :: card
+CHARACTER(LEN=mlc) :: card
 CHARACTER(LEN=512), DIMENSION(mnt) :: tokens, queue
 INTEGER :: num_tokens, size_queue
 
   ! --------------------------------
-  card(1:128) = " "
+  card(:) = " "
   card = " 51*(41+31) "
 
   CALL TOKENIZER(card, tokens, num_tokens)
@@ -278,8 +331,8 @@ INTEGER :: num_tokens, size_queue
   CALL PRINT_STACK(6, queue, size_queue)
 
   ! --------------------------------
-  card(1:128) = " "
-  card = " 51*41+ 31 "
+  card(:) = " "
+  card = " 51*41+ 31"
 
   CALL TOKENIZER(card, tokens, num_tokens)
   CALL PARSER(tokens, num_tokens, queue, size_queue)
@@ -289,7 +342,7 @@ INTEGER :: num_tokens, size_queue
   CALL PRINT_STACK(6, queue, size_queue)
 
   ! --------------------------------
-  card(1:128) = " "
+  card(:) = " "
   card = " ((51*41))+ 31 "
 
   CALL TOKENIZER(card, tokens, num_tokens)
