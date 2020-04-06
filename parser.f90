@@ -1,7 +1,7 @@
 MODULE PARSER_MOD
-INTEGER, PARAMETER :: num_opers=5, mlc=128
-CHARACTER(LEN=1), DIMENSION(num_opers), PARAMETER :: operators = ['^', '/',  '*',  '-', '+']
-INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [3, 2, 2, 1, 1]
+INTEGER, PARAMETER :: num_opers=6, mlc=128
+CHARACTER(LEN=2), DIMENSION(num_opers), PARAMETER :: operators = ['**', '^ ', '/ ',  '* ',  '- ', '+ ']
+INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [3, 3, 2, 2, 1, 1]
 INTEGER, PARAMETER :: mql=5000, mnt=5000
 
 TYPE TokenType
@@ -47,12 +47,12 @@ CONTAINS
   FUNCTION GET_OPER_INDEX(oper) RESULT(loc)
   IMPLICIT NONE
   INTEGER :: loc, i
-  CHARACTER(LEN=1) :: oper
+  CHARACTER(LEN=*) :: oper
   INTENT(IN) :: oper
 
   loc = 0
   DO i = 1, num_opers
-    IF (operators(i) == oper) THEN
+    IF (oper == TRIM(operators(i))) THEN
       loc = i
       EXIT
     END IF
@@ -138,7 +138,7 @@ CONTAINS
   TYPE(TokenType), DIMENSION(mnt) :: tokens
   CHARACTER(LEN=mlc) :: card 
   CHARACTER(LEN=1) :: curr_char, next_char
-  LOGICAL :: exit_flag, loop_flag
+  LOGICAL :: exit_flag
   INTEGER :: vc, c, t, num_tokens, loc, icurr
   INTENT(IN) :: card
   INTENT(OUT) :: tokens, num_tokens
@@ -156,7 +156,6 @@ CONTAINS
 
     curr_char = card(c:c)
     IF (curr_char == " ")  CYCLE
-    !write(0,*)"current:", curr_char
 
     IF (curr_char == "(") THEN
       num_tokens = num_tokens + 1
@@ -178,7 +177,14 @@ CONTAINS
       num_tokens = num_tokens + 1
       tokens(num_tokens)%string = curr_char
       tokens(num_tokens)%ttype = 'operator'
-      loop_flag = .TRUE.
+      ! check if current token is a '*' or really a '**'
+      IF (curr_char == "*") THEN
+        next_char = PEEK_NEXT_CHAR(card, c)
+        IF (ICHAR(next_char) == 42) THEN
+          tokens(num_tokens)%string(2:2) = next_char
+          c = c + 1
+        END IF
+      END IF
       CYCLE
     END IF
 
@@ -232,7 +238,7 @@ CONTAINS
 
 
   ! ------------------------------------------------------------------------------------------------
-  SUBROUTINE PARSER(tokens, num_tokens, output_queue, out_head)
+  SUBROUTINE CREATE_STACK(tokens, num_tokens, output_queue, out_head)
   IMPLICIT NONE
   INTEGER :: num_tokens
   TYPE(TokenType), DIMENSION(num_tokens) :: tokens
@@ -260,8 +266,6 @@ CONTAINS
       DO
         IF (oper_head == 0)  EXIT
         top_priority = GET_PRIORITY(oper_stack(oper_head))
-        !write(0,*) "current priority", priority
-        !write(0,*) "top stack prior ", top_priority
 
         IF (priority >= top_priority .OR. oper_stack(oper_head) == "(")  EXIT
 
@@ -305,7 +309,7 @@ CONTAINS
     oper_head = oper_head - 1
   END DO
 
-  END SUBROUTINE PARSER
+  END SUBROUTINE CREATE_STACK
 END MODULE PARSER_MOD
 
 
@@ -323,7 +327,7 @@ INTEGER :: num_tokens, size_queue
   card = " 51*(41+31) "
 
   CALL TOKENIZER(card, tokens, num_tokens)
-  CALL PARSER(tokens, num_tokens, queue, size_queue)
+  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
 
   WRITE(6,'(/A)')"card: " // TRIM(card)
   CALL PRINT_TOKENS(6, tokens, num_tokens)
@@ -334,7 +338,7 @@ INTEGER :: num_tokens, size_queue
   card = " 51*41+ 31"
 
   CALL TOKENIZER(card, tokens, num_tokens)
-  CALL PARSER(tokens, num_tokens, queue, size_queue)
+  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
 
   WRITE(6,'(/A)')"card: " // TRIM(card)
   CALL PRINT_TOKENS(6, tokens, num_tokens)
@@ -345,7 +349,7 @@ INTEGER :: num_tokens, size_queue
   card = " ((C1*BB))+ A1 "
 
   CALL TOKENIZER(card, tokens, num_tokens)
-  CALL PARSER(tokens, num_tokens, queue, size_queue)
+  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
 
   WRITE(6,'(/A)')"card: " // TRIM(card)
   CALL PRINT_TOKENS(6, tokens, num_tokens)
@@ -356,7 +360,18 @@ INTEGER :: num_tokens, size_queue
   card = " ((C1*BB^2)^3.3)+ A1 "
 
   CALL TOKENIZER(card, tokens, num_tokens)
-  CALL PARSER(tokens, num_tokens, queue, size_queue)
+  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
+
+  WRITE(6,'(/A)')"card: " // TRIM(card)
+  CALL PRINT_TOKENS(6, tokens, num_tokens)
+  CALL PRINT_STACK(6, queue, size_queue)
+
+  ! --------------------------------
+  card(:) = " "
+  card = " ((C1*BB**2)**3.3)+ A1 "
+
+  CALL TOKENIZER(card, tokens, num_tokens)
+  CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
 
   WRITE(6,'(/A)')"card: " // TRIM(card)
   CALL PRINT_TOKENS(6, tokens, num_tokens)
