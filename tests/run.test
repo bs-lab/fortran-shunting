@@ -1,0 +1,3 @@
+#!/bin/bash
+
+../source/parser input.dat | tee output.dat
