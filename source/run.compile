@@ -1,5 +1,6 @@
 #!/bin/bash
 
-gfortran -fbacktrace -Wall -ffree-line-length-none -fdump-core -C -Warray-bounds parser.f90 -o parser
+gfortran -fbacktrace -Wall -ffree-line-length-none -fdump-core -C -Warray-bounds \
+  ./parser.f90 ./main.f90 -o parse_test
 
 rm parser_mod.mod
