@@ -6,9 +6,13 @@ PUBLIC mss, mlc, mli, TokenType, TOKENIZER, CREATE_STACK, PRINT_TOKENS, PRINT_ST
 INTEGER, PARAMETER :: mss=5000    ! max size of stack
 INTEGER, PARAMETER :: mlc=1024    ! max length of a record (equation)
 INTEGER, PARAMETER :: mli=64      ! max length of item on stack
-INTEGER, PARAMETER :: num_opers=6
-CHARACTER(LEN=2), DIMENSION(num_opers), PARAMETER :: operators = ['**', '^ ', '/ ',  '* ',  '- ', '+ ']
-INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [3, 3, 2, 2, 1, 1]
+INTEGER, PARAMETER :: num_opers=13
+CHARACTER(LEN=2), DIMENSION(num_opers), PARAMETER :: operators = ['**', '^ ', '/ ', '* ', '- ', &
+                                                                  '+ ', '==', '<=', '>=', '< ', &
+                                                                  '> ', '<>', '!=']
+INTEGER, DIMENSION(num_opers), PARAMETER :: oper_priority = [3, 3, 2, 2, 1, &
+                                                             1, 0, 0, 0, 0, &
+                                                             0, 0, 0]
 
 TYPE TokenType
   CHARACTER(LEN=32) :: string   ! e.g. '12.345' or 'var_name'
@@ -71,7 +75,7 @@ CONTAINS
   FUNCTION GET_PRIORITY(oper) RESULT(xout)
   IMPLICIT NONE
   INTEGER :: loc, xout
-  CHARACTER(LEN=1) :: oper
+  CHARACTER(LEN=*) :: oper
   INTENT(IN) :: oper
 
   loc = GET_OPER_INDEX(oper)
@@ -174,20 +178,25 @@ CONTAINS
       CYCLE
     END IF
     
-    ! check if character is an operator
+    ! check if this character plus next character are a two-character operator
+    next_char = PEEK_NEXT_CHAR(card,c)
+    IF (ICHAR(next_char) /= 0 .AND. ICHAR(next_char) /= 32) THEN  ! neither null nor space
+      loc = GET_OPER_INDEX(curr_char // next_char)
+      IF (loc > 0) THEN
+        num_tokens = num_tokens + 1
+        tokens(num_tokens)%string = curr_char // next_char
+        tokens(num_tokens)%ttype = 'operator'
+        c = c + 1
+        CYCLE
+      END IF
+    END IF
+         
+    ! check if this character is a single-character operator
     loc = GET_OPER_INDEX(curr_char)
     IF (loc > 0) THEN
       num_tokens = num_tokens + 1
       tokens(num_tokens)%string = curr_char
       tokens(num_tokens)%ttype = 'operator'
-      ! check if current token is a '*' or really a '**'
-      IF (curr_char == "*") THEN
-        next_char = PEEK_NEXT_CHAR(card, c)
-        IF (ICHAR(next_char) == 42) THEN
-          tokens(num_tokens)%string(2:2) = next_char
-          c = c + 1
-        END IF
-      END IF
       CYCLE
     END IF
 
@@ -230,8 +239,8 @@ CONTAINS
     END IF
   END DO
 
-  ! Clean up any instances where a plus or minus sign that should be associated with a value
-  !   was instead treated as a separate token.
+  ! Clean up any instances where a plus or minus sign (unary) that should be associated with
+  !   a value was instead treated as a separate token.
   t = 0
   DO
     t = t + 1

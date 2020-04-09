@@ -14,6 +14,7 @@ INTEGER :: num_tokens, size_queue, ios
   DO
     READ(inn, '(A)', iostat=ios) card
     IF (ios < 0) EXIT
+    IF (LEN_TRIM(card) == 0)  CYCLE
     CALL TOKENIZER(card, tokens, num_tokens)
     CALL CREATE_STACK(tokens, num_tokens, queue, size_queue)
 

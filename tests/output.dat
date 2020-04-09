@@ -34,3 +34,23 @@ rpn stack: C1 BB 2 ^ * 3.3 ^ A1 +
 card:  ((C1*BB**2)**3.3)+ A1
 tokens: ( ( C1 * BB ** 2 ) ** 3.3 ) + A1
 rpn stack: C1 BB 2 ** * 3.3 ** A1 +
+
+card: 51*2 + 3 == 105
+tokens: 51 * 2 + 3 == 105
+rpn stack: 51 2 * 3 + 105 ==
+
+card: A + B * C == G * H + Q
+tokens: A + B * C == G * H + Q
+rpn stack: A B C * + G H * Q + ==
+
+card: A + B * C >= G * H + Q  == 7
+tokens: A + B * C >= G * H + Q == 7
+rpn stack: A B C * + G H * Q + 7 == >=
+
+card: A + B * 3 != -9.9 * H + Q
+tokens: A + B * 3 != -9.9 * H + Q
+rpn stack: A B 3 * + -9.9 H * Q + !=
+
+card: A + B * 3 <> +9.9 * H + Q
+tokens: A + B * 3 <> 9.9 * H + Q
+rpn stack: A B 3 * + 9.9 H * Q + <>
