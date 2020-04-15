@@ -314,16 +314,13 @@ CONTAINS
 
   ! using Shunting-yard algorithm to convert list of tokens into Reverse Polish notation (RPN)
   DO t = 1, num_tokens
-    IF (tokens(t)%ttype == "operator") THEN
-      priority = GET_PRIORITY(tokens(t)%string)
-    END IF
-
     IF (tokens(t)%ttype == "number" .OR. tokens(t)%ttype == "variable") THEN
       out_head = out_head + 1
       output_queue(out_head) = tokens(t)%string
     END IF
 
     IF (tokens(t)%ttype == "operator") THEN
+      priority = GET_PRIORITY(tokens(t)%string)
       DO
         IF (oper_head == 0)  EXIT
         top_priority = GET_PRIORITY(oper_stack(oper_head))
