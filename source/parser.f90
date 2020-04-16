@@ -38,15 +38,16 @@ CONTAINS
 
 
   ! ------------------------------------------------------------------------------------------------
-  SUBROUTINE PRINT_STACK(OUNIT, stack, stack_size)
+  SUBROUTINE PRINT_STACK(OUNIT, stack)
+  use stack_mod
   IMPLICIT NONE
-  INTEGER :: i, OUNIT, stack_size
-  CHARACTER(LEN=mli), DIMENSION(stack_size) :: stack
-  INTENT(IN) :: OUNIT, stack, stack_size
+  INTEGER, INTENT(IN) :: OUNIT
+  TYPE(StackType), INTENT(IN) :: stack
+  INTEGER :: i
 
   WRITE(OUNIT, '(A)', ADVANCE='no') "rpn stack:"
-  DO i = 1, stack_size
-    WRITE(OUNIT, '(A)', ADVANCE='no') " " // TRIM(stack(i))
+  DO i = 1, stack%size()
+    WRITE(OUNIT, '(A)', ADVANCE='no') " " // TRIM(stack%data(i))
   END DO
   WRITE(OUNIT, '(A)')
 
@@ -298,73 +299,63 @@ CONTAINS
 
 
   ! ------------------------------------------------------------------------------------------------
-  SUBROUTINE CREATE_STACK(tokens, num_tokens, output_queue, out_head)
+  SUBROUTINE CREATE_STACK(tokens, num_tokens, output_stack)
+  use stack_mod
   IMPLICIT NONE
   INTEGER :: num_tokens
   TYPE(TokenType), DIMENSION(num_tokens) :: tokens
-  CHARACTER(LEN=mli), DIMENSION(mss) :: output_queue
-  CHARACTER(LEN=mli), DIMENSION(mss) :: oper_stack
+  TYPE(StackType) :: output_stack, oper_stack
   INTEGER :: t, priority, top_priority
-  INTEGER  :: out_head, oper_head
   INTENT(IN) :: tokens, num_tokens
-  INTENT(OUT) :: output_queue, out_head
-
-  out_head = 0
-  oper_head = 0
+  INTENT(OUT) :: output_stack
 
   ! using Shunting-yard algorithm to convert list of tokens into Reverse Polish notation (RPN)
   DO t = 1, num_tokens
     IF (tokens(t)%ttype == "number" .OR. tokens(t)%ttype == "variable") THEN
-      out_head = out_head + 1
-      output_queue(out_head) = tokens(t)%string
+      CALL output_stack%push(tokens(t)%string)
     END IF
 
     IF (tokens(t)%ttype == "operator") THEN
       priority = GET_PRIORITY(tokens(t)%string)
       DO
-        IF (oper_head == 0)  EXIT
-        top_priority = GET_PRIORITY(oper_stack(oper_head))
+        IF (oper_stack%size() == 0)  EXIT
 
-        IF (priority >= top_priority .OR. oper_stack(oper_head) == "(")  EXIT
+        top_priority = GET_PRIORITY(oper_stack%top())
+        IF (priority >= top_priority .OR. oper_stack%top() == "(")  EXIT
 
-        out_head = out_head + 1
-        output_queue(out_head) = oper_stack(oper_head)
-        oper_head = oper_head - 1
+        CALL output_stack%push(oper_stack%top())
+        CALL oper_stack%pop()
       END DO
 
-      oper_head = oper_head + 1
-      oper_stack(oper_head) = tokens(t)%string
+      CALL oper_stack%push(tokens(t)%string)
     END IF
 
     IF (tokens(t)%ttype == "left_paren") THEN
-      oper_head = oper_head + 1
-      oper_stack(oper_head) = tokens(t)%string
+      CALL oper_stack%push(tokens(t)%string)
     END IF
 
     IF (tokens(t)%ttype == "right_paren") THEN
-      IF (oper_head == 0) THEN
+      IF (oper_stack%size() == 0) THEN
         WRITE(0,*)"unexpected closing parentheses"
         STOP
       END IF
 
       DO
-        IF (oper_stack(oper_head) == "(")  EXIT
-        out_head = out_head + 1
-        output_queue(out_head) = oper_stack(oper_head)
-        oper_head = oper_head - 1
+        IF (oper_stack%top() == "(")  EXIT
+        CALL output_stack%push(oper_stack%top())
+        CALL oper_stack%pop()
       END DO
-      IF (oper_stack(oper_head) == "(") THEN
-        oper_head = oper_head - 1
+      IF (oper_stack%top() == "(") THEN
+        CALL oper_stack%pop()
       END IF
     END IF
   END DO
 
   ! move operation stack onto output stack
   DO
-    IF (oper_head == 0) EXIT
-    out_head = out_head + 1
-    output_queue(out_head) = oper_stack(oper_head)
-    oper_head = oper_head - 1
+    IF (oper_stack%size() == 0)  EXIT
+    CALL output_stack%push(oper_stack%top())
+    CALL oper_stack%pop()
   END DO
 
   END SUBROUTINE CREATE_STACK
